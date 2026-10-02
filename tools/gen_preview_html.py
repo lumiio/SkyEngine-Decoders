@@ -11,6 +11,7 @@ for L in ['DayHubCave', 'Prairie_Village', 'Prairie_ButterflyFields']:
   # decimated: tri groups [x,y,z,r,g,b]*3
     LEVELS[L] = {'tri': d['tri'], 'water': d.get('water', [])}
 
+# data goes to an external JS file: a multi-MB inline <script> is not executed by some browsers
 data_js = 'const LEVELS = ' + json.dumps(LEVELS, separators=(',', ':'))
 
 html = """<!DOCTYPE html>
@@ -40,8 +41,8 @@ html = """<!DOCTYPE html>
 </div>
 <div id="stats"></div>
 <canvas id="cv"></canvas>
+<script src="preview_data.js"></script>
 <script>
-""" + data_js + """
 (function(){
   const cv = document.getElementById('cv');
   const ctx = cv.getContext('2d');
@@ -107,8 +108,9 @@ html = """<!DOCTYPE html>
     const z2 = y1*sp + z1*cp;
     const dist = camR*2.6/zoom;
     if(z2 > -0.05*dist) return null;
-    const f = (H*0.9*dpr)/(z2+dist);
-    return [W/2*dpr + x1*f, H/2*dpr - y2*f, z2];
+    // logical coords: ctx is already scaled by dpr, so no dpr here
+    const f = (H*0.9)/(z2+dist);
+    return [W/2 + x1*f, H/2 - y2*f, z2];
   }
 
   let cached=null;
@@ -116,23 +118,20 @@ html = """<!DOCTYPE html>
     const L = LEVELS[cur];
     const tri = L.tri;
     let mnx=1e30,mny=1e30,mnz=1e30,mxx=-1e30,mxy=-1e30,mxz=-1e30;
-    for(let i=0;i<tri.length;i+=15){
-      mnx=Math.min(mnx,tri[i]);mny=Math.min(mny,tri[i+1]);mnz=Math.min(mnz,tri[i+2]);
-      mxx=Math.max(mxx,tri[i+9]);mxy=Math.max(mxy,tri[i+10]);mxz=Math.max(mxz,tri[i+11]);
+    // tri layout: one array of 18 per triangle = [x,y,z,r,g,b] * 3 vertices
+    for(const t of tri){
+      mnx=Math.min(mnx,t[0]);mny=Math.min(mny,t[1]);mnz=Math.min(mnz,t[2]);
+      mxx=Math.max(mxx,t[12]);mxy=Math.max(mxy,t[13]);mxz=Math.max(mxz,t[14]);
     }
     camR = Math.max(mxx-mnx, mxz-mnz, mxy-mny)*0.7;
     // scene center
     const cx=(mnx+mxx)/2, cy2=(mny+mxy)/2, cz=(mnz+mxz)/2;
     // triangle list (decimated render: every 2nd)
     const list=[];
-    for(let i=0;i<tri.length;i+=15){
-      if((i/15)%2) continue;
-      const ax=tri[i]-cx, ay=tri[i+1]-cy2, az=tri[i+2]-cz;
-      const bx=tri[i+6]-cx, by=tri[i+7]-cy2, bz=tri[i+8]-cz;
-      const cax=tri[i+12]-cx, cay=tri[i+13]-cy2, caz=tri[i+14]-cz;
-      const r=tri[i+3], g=tri[i+4], b=tri[i+5];
-      list.push([ax,ay,az,bx,by,bz,cax,cay,caz,r,g,b]);
-    }
+    tri.forEach((t,idx)=>{
+      if(idx%2) return;
+      list.push([t[0]-cx,t[1]-cy2,t[2]-cz, t[6]-cx,t[7]-cy2,t[8]-cz, t[12]-cx,t[13]-cy2,t[14]-cz, t[3],t[4],t[5]]);
+    });
     const water = (L.water||[]).map(w=>[w[0]-cx,w[1]-cy2,w[2]-cz,w[3],w[4]]);
     return {list, water, cx, cy2, cz};
   }
@@ -144,7 +143,6 @@ html = """<!DOCTYPE html>
     drawSky();
     const cy=Math.cos(yaw), sy=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
     const dist = S.camR*2.6/zoom;
-    const fbase = H*0.9*dpr;
  // project+depth
     const out=[];
     for(const t of S.list){
@@ -152,9 +150,7 @@ html = """<!DOCTYPE html>
       const q=project(t[3],t[4],t[5]);
       const r=project(t[6],t[7],t[8]);
       if(!p||!q||!r) continue;
-    // backface cull (screen area sign)
-      const area=(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
-      if(area<0) continue;
+    // no backface cull: mesh winding is not guaranteed, draw both sides for inspection
       const depth=(p[2]+q[2]+r[2])/3;
       out.push([p,q,r,depth,t[9],t[10],t[11]]);
     }
@@ -197,4 +193,7 @@ html = """<!DOCTYPE html>
 out = f'{BASE}/preview.html'
 with open(out, 'w') as f:
     f.write(html)
-print(f'generated {out} ({os.path.getsize(out)/1024/1024:.1f} MB)')
+data_out = f'{BASE}/preview_data.js'
+with open(data_out, 'w') as f:
+    f.write(data_js)
+print(f'generated {out} (+{data_out}, {os.path.getsize(data_out)/1024/1024:.1f} MB)')

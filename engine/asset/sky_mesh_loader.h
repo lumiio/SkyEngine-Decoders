@@ -1,12 +1,22 @@
 // sky_mesh_loader.h - Sky: Children of the Light .mesh resource loader
 // format notes: TGC .mesh (base variant, variant_flags==0)
+// self-contained: depends only on core/math.h (Vec2/Vec3/Color), not on the render backend
 #pragma once
-#include "../render/backend.h"
+#include "../core/math.h"
 #include <memory>
 #include <string>
 #include <vector>
 
 namespace sky {
+
+// decoded mesh output (CPU-side, renderer-agnostic)
+struct RenderMesh {
+  std::vector<Vec3> positions;
+  std::vector<Color> colors;      // per-vertex color
+  std::vector<uint32_t> indices;
+  std::vector<Vec2> uvs;          // optional lightmap UV
+  bool baked=false;
+};
 
 // load TGC .mesh file (base variant, variant_flags==0)
 // returns render mesh; nullptr on failure with error message

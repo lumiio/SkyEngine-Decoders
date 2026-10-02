@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 #include <map>
-#include "../engine/asset/sky_bst_decoder.h"
+#include "../engine/asset/sky_mesh_loader.h"
 using namespace sky;
 
 struct Instance { std::string name; float mat[16]; std::string tex; std::string tex2; float col[3]; bool hasCol=false; float lit=0; };
@@ -19,18 +19,22 @@ static const char* MESH_VARIANTS[] = {
   "_StripAnim_CompOcc_ZipUvs", "_CompOcc_ZipPos_ZipUvs_StripNorm", "_StripNorm", "_ZipPos_StripNorm"
 };
 
-static MeshData loadMeshData(const std::string& base, const std::string& d1, const std::string& d2){
-  MeshData m;
-  for(const char* v:MESH_VARIANTS){
-    std::string p = base + v + ".mesh";
-    if(d1.size() && readMeshFile((d1+"/"+p).c_str(), m)) return m;
-    if(d2.size() && readMeshFile((d2+"/"+p).c_str(), m)) return m;
+static std::shared_ptr<RenderMesh> loadMeshData(const std::string& name, const std::string& d1, const std::string& d2){
+  // try both flat (meshes/xxx.mesh) and Bin/-prefixed layouts
+  const std::string prefixes[2] = {"", "Bin/"};
+  for(const std::string& pre : prefixes){
+    for(const char* v:MESH_VARIANTS){
+      std::string p = pre + name + v + ".mesh";
+      std::string err;
+      if(d1.size()){ auto m=load_sky_mesh(d1+"/"+p, &err); if(m) return m; }
+      if(d2.size()){ auto m=load_sky_mesh(d2+"/"+p, &err); if(m) return m; }
+    }
   }
-  return m;
+  return nullptr;
 }
 
 int main(int argc,char**argv){
- if(argc<4){ fprintf(stderr,"usage: scene_export <instances.txt> <meshDirs> <out.json> [bst.meshes] [decimate]\n");return 1;}
+ if(argc<4){ fprintf(stderr,"usage: scene_export <instances.txt> <meshDirs> <out.json> [bst.meshes] [texDir] [decimate]\n");return 1;}
  FILE* f=fopen(argv[1],"r");if(!f){ fprintf(stderr,"manifest open failed\n");return 1;}
   std::vector<Instance> insts; std::vector<Water> waters;
   std::string curName,curTex,curTex2; float curMat[16]; float curCol[3]={1,1,1}; bool curHasCol=false; float curLit=0;
@@ -67,7 +71,7 @@ int main(int argc,char**argv){
   std::string dirs=argv[2]; size_t comma=dirs.find(',');
   std::string d1=dirs.substr(0,comma), d2=comma==std::string::npos?"":dirs.substr(comma+1);
  // decimate
-  int skip=argc>=6?atoi(argv[5]):4;
+  int skip=argc>=7?atoi(argv[6]):4;
   FILE* out=fopen(argv[3],"w");
  if(!out){ fprintf(stderr,"outputfail\n");return 1;}
   fprintf(out,"{\"name\":\"%s\",\"tri\":[", argv[3]);
@@ -76,8 +80,8 @@ int main(int argc,char**argv){
   long long vi=0;
   for(size_t ii=0;ii<insts.size();ii++){
     const Instance& in=insts[ii];
-    MeshData m=loadMeshData("Bin/"+in.name, d1, d2);
-    if(m.positions.empty()) continue;
+    auto m=loadMeshData(in.name, d1, d2);
+    if(!m || m->positions.empty()) continue;
     if((vi++)%skip) continue;
  // transform: row-major mat = M(mat[0..15]); p' = M * p
     const float* M=in.mat;
@@ -87,20 +91,20 @@ int main(int argc,char**argv){
  // color
     int cr=200,cg=200,cb=200;
     if(in.hasCol){ cr=(int)(255*in.col[0]); cg=(int)(255*in.col[1]); cb=(int)(255*in.col[2]); }
-    for(size_t t=0;t+2<m.indices.size();t+=3){
-      uint32_t i0=m.indices[t],i1=m.indices[t+1],i2=m.indices[t+2];
-      if(i0*3+2>=m.positions.size()||i1*3+2>=m.positions.size()||i2*3+2>=m.positions.size()) continue;
+    for(size_t t=0;t+2<m->indices.size();t+=3){
+      uint32_t i0=m->indices[t],i1=m->indices[t+1],i2=m->indices[t+2];
+      if(i0>=m->positions.size()||i1>=m->positions.size()||i2>=m->positions.size()) continue;
       if(!first) fprintf(out,",");
       first=false; count++;
       float px[3],py[3],pz[3];
+      uint32_t idxs[3]={i0,i1,i2};
       for(int k=0;k<3;k++){
-        uint32_t idx=(k==0?i0:(k==1?i1:i2))*3;
-        float x=m.positions[idx],y=m.positions[idx+1],z=m.positions[idx+2];
-        px[k]=r0c0*x+r0c1*y+r0c2*z+tx;
-        py[k]=r1c0*x+r1c1*y+r1c2*z+ty;
-        pz[k]=r2c0*x+r2c1*y+r2c2*z+tz;
+        const Vec3& v=m->positions[idxs[k]];
+        px[k]=r0c0*v.x+r0c1*v.y+r0c2*v.z+tx;
+        py[k]=r1c0*v.x+r1c1*v.y+r1c2*v.z+ty;
+        pz[k]=r2c0*v.x+r2c1*v.y+r2c2*v.z+tz;
       }
-      fprintf(out,"[%.1f,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f,%.1f]",px[0],py[0],pz[0],cr,cg,cb,px[1],py[1],pz[1],cr,cg,cb,px[2],py[2],pz[2],cr,cg,cb);
+      fprintf(out,"[%.1f,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f,%d,%d,%d,%.1f,%.1f,%.1f,%d,%d,%d]",px[0],py[0],pz[0],cr,cg,cb,px[1],py[1],pz[1],cr,cg,cb,px[2],py[2],pz[2],cr,cg,cb);
     }
   }
   fprintf(out,"],\"water\":[");

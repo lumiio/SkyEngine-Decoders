@@ -88,6 +88,7 @@ std::shared_ptr<RenderMesh> load_sky_mesh_strip(const std::string& path, std::st
   const uint8_t* d = b.data();
   uint32_t shared = 0; std::memcpy(&shared, d+0xd0, 4);
   if (shared == 0 || shared > 200000) { if (err) *err="bad shared count"; return nullptr; }
+  if (b.size() < 0x1f0 + (size_t)shared*6) { if (err) *err="ZipPos stream exceeds file"; return nullptr; }
   float mn[3], mx[3];
   std::memcpy(mn, d+0x60, 12); std::memcpy(mx, d+0x6c, 12);
     // ZipPos vertices @0x1F0 (918 x 3 x u16 fixed-point)
@@ -129,6 +130,7 @@ std::shared_ptr<RenderMesh> load_sky_mesh(const std::string& path, std::string* 
   if (flags == 1) return load_sky_mesh_strip(path, err);
   if (flags != 0 && flags != 0x100) { if (err) *err = "variant mesh not supported yet (flags=" + std::to_string(flags) + ")"; return nullptr; }
   uint32_t usize = 0; std::memcpy(&usize, d+0x56, 4);
+  if (usize == 0 || usize > 100000000) { if (err) *err="bad decompressed size"; return nullptr; }
   size_t src_len = b.size() - 0x5a;
   const char* src = (const char*)d + 0x5a;
   std::vector<char> dest(usize);
@@ -140,6 +142,9 @@ std::shared_ptr<RenderMesh> load_sky_mesh(const std::string& path, std::string* 
   std::memcpy(&shared, u+0x74, 4);
   std::memcpy(&total,  u+0x78, 4);
   std::memcpy(&uv_count, u+0x84, 4);
+  if (shared == 0 || shared > 200000) { if (err) *err="bad shared count"; return nullptr; }
+  if (total > 10000000) { if (err) *err="bad total count"; return nullptr; }
+  if (0xb3 + (size_t)shared*16 + (size_t)shared*4 > dest.size()) { if (err) *err="stream exceeds buffer"; return nullptr; }
 
   auto mesh = std::make_shared<RenderMesh>();
   mesh->positions.resize(shared);

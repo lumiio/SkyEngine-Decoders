@@ -1,5 +1,5 @@
 // skeleton animation render: per-frame bone global position + parent-child lines
-#include "engine/asset/sky_animpack_decoder.h"
+#include "../engine/asset/sky_animpack_decoder.h"
 #include <cstdio>
 #include <cstring>
 #include <vector>

@@ -28,7 +28,7 @@
 
 | 文件 | 解码对象 | 要点 |
 |---|---|---|
-| `sky_bst_decoder.h` | `BstBaked.meshes` 烘焙地形 | LVL0 / GEO0 / LOD0 / METR 四段；GEO0 顶点材质 id + 烘焙光照 uv |
+| `sky_bst_decoder.h` | `BstBaked.meshes` 烘焙地形 | LVL0 / GEO0 / LOD0 / METR 四段；GEO0 顶点材质 id + in2/in3/in4（烘焙光+官方顶点色） |
 | `sky_mesh_loader.{h,cpp}` | `.mesh` 网格 | 头部 0x4e payload、LZ4 压缩、顶点/索引流、`_CompOcc` / `_ZipPos` / `_ZipUvs` / `_StripAnim` 压缩变体、骨骼 |
 | `sky_animpack_decoder.h` | `.animpack` 动画包 | 骨架层级、动画轨道、生物轨道 |
 | `sky_animpack_loader.{h,cpp}` | `.animpack` 加载 | 包解析 + 轨道实例化 |

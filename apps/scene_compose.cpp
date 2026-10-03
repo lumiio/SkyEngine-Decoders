@@ -456,8 +456,6 @@ int main(int argc, char** argv){
       Tex t; if(loadPPM((std::string(texDir)+"/"+in.tex+".ppm").c_str(),t)) texCache[in.tex]=std::move(t);
       else texCache[in.tex]=Tex{1,1,{255,255,255}};
     }
-    // 官方地形纹理 (PaintStrokeSh_Terrain): 无材质绑定地形回退
-    Tex pt; if(loadPPM((std::string(texDir)+"/PaintStrokeSh_Terrain.ppm").c_str(),pt)) texCache["PaintStrokeSh_Terrain"]=std::move(pt);
     printf("贴图加载: %zu 张\n", texCache.size());
   }
 
@@ -648,29 +646,12 @@ int main(int argc, char** argv){
     if(gEnv.fogFar>0){ fogR=(int)(gEnv.fogTintMidBot[0]*1.0f*(1.f-gEnv.fogLumRed)*255.f); fogG=(int)(gEnv.fogTintMidBot[1]*1.0f*(1.f-gEnv.fogLumRed)*255.f); fogB=(int)(gEnv.fogTintMidBot[2]*1.0f*(1.f-gEnv.fogLumRed)*255.f); }
     if(fogR>255)fogR=255; if(fogG>255)fogG=255; if(fogB>255)fogB=255;
   }
-  // 地形: GEO0 顶点材质 ID → 材质色（LevelMaterial 名映射，官方材质分层）
-  auto terrMatColor=[&](uint8_t mid)->int{
-    switch(mid){
-      case 18: return 0x8d9298; // Cliff 悬崖冷灰岩
-      case 80: return 0xf0f0f5; // Cloud 云白
-      case 50: return 0x8ec27c; // GRASSLIGHT_MOSS 亮草绿 (官方草色系提亮)
-      case 21: return 0xc8aa5a; // Gold 金
-      case 24: return 0x64646a; // STONE GRUNGE2 / IntroGate
-      case 20: return 0x827a88; // StoneMotif/WallBrick/StoneGrunge/StoneRamp 冷紫灰
-      case 26: return 0x96939c; // STONE BRICK 冷砖灰
-      case 30: return 0x8c6446; // Wood 木棕
-      case 31: return 0xa0785a; // Jar 陶棕
-      case 23: return 0xaaa5a0; // TileFloor 浅灰
-      case 19: return 0x878281; // WallDmg 灰
-      case 16: return 0x9aa08a; // 未名地面系
-      case 17: return 0x8a9078;
-      case 32: case 33: return 0x7d8470;
-      case 36: return 0x6e7a90; // 尖顶/塔
-      case 48: return 0x78a86a; // GRASS_MOSS 草绿 (官方 GrassNorTex1 109,150,137 提亮)
-      case 49: return 0x7a7058;
-      default: return 0x8f8a7e;
-    }
-  };
+  // 地形颜色 = 官方 GEO0 顶点色 (in3 RGBA8, 按材质均值) × 烘焙光 (in2.r)
+  float in3mean[256][3]={0}; int in3cnt[256]={0};
+  for(size_t i=0;i<terrVerts.size()/3;i++){
+    uint8_t m=terr.vmat.size()>i?terr.vmat[i]:18;
+    if(terr.uv1.size()>i*4+2){ in3mean[m][0]+=terr.uv1[i*4]; in3mean[m][1]+=terr.uv1[i*4+1]; in3mean[m][2]+=terr.uv1[i*4+2]; in3cnt[m]++; }
+  }
   {
     float lx=0.35f,ly=0.85f,lz=0.4f;
     if(gEnv.has){ float az=gEnv.sunAz*0.0174533f, el=gEnv.sunEl*0.0174533f; lx=cosf(az)*cosf(el); ly=sinf(el); lz=sinf(az)*cosf(el); }
@@ -688,17 +669,13 @@ int main(int argc, char** argv){
       float nl=sqrt(nx*nx+ny*ny+nz*nz); if(nl>1e-9){nx/=nl;ny/=nl;nz/=nl;}
       float dif=fmax(0.f,nx*lx+ny*ly+nz*lz);
       uint8_t mid = terr.vmat.size()>i0 ? terr.vmat[i0] : 18;
-      int hc=terrMatColor(mid);
-      // 官方烘焙光照: GEO0 顶点 v_color (in2 首字节, 0..1) × gi_light (in3 首字节调制)
+  // 官方烘焙光: GEO0 顶点 in2.r (RGBA8, 0..1)
       float lightB = 0.7f;
       if(terr.uv0.size()>(size_t)(i0*2)) lightB = terr.uv0[i0*2];
-      float giB = 0.5f;
-      if(terr.uv1.size()>(size_t)(i0*2)) giB = terr.uv1[i0*2];
-      float shF = 0.15f + 0.85f*lightB; // 官方模型: lightB=烘焙光照(uv0), giB 已内含
-      if(gEnv.has){ shF += 0.06f*giB; } // 官方 gi 通道轻调制
-      if(shF>1.f) shF=1.f;
-      int sh=(int)(shF*255); sh=std::min(sh,255);
-      int tr=((hc>>16)&255)*sh/255, tg=((hc>>8)&255)*sh/255, tb=(hc&255)*sh/255;
+      int sh=(int)(lightB*255); sh=std::min(sh,255);
+      float cr=1.f,cg=1.f,cb=1.f;
+      if(in3cnt[mid]>0){ cr=in3mean[mid][0]/in3cnt[mid]; cg=in3mean[mid][1]/in3cnt[mid]; cb=in3mean[mid][2]/in3cnt[mid]; }
+      int tr=(int)(cr*255)*sh/255, tg=(int)(cg*255)*sh/255, tb=(int)(cb*255)*sh/255;
       if(bakevis){ int gv=(int)((lightB*1.8f-0.6f)*255); if(gv<0)gv=0; if(gv>255)gv=255; tr=tg=tb=gv; }
       if(dumpPath && dumpCnt<200000){
         static FILE* df=nullptr;
@@ -706,7 +683,7 @@ int main(int argc, char** argv){
         float lb2=0.5f, gi2=0.5f;
         if(terr.uv0.size()>(size_t)(i0*2+1)) lb2=terr.uv0[i0*2+1];
         if(terr.uv1.size()>(size_t)(i0*2+1)) gi2=terr.uv1[i0*2+1];
-        if(df){ fprintf(df,"%.4f,%.4f,%.4f,%.4f,%.4f,%d\n",lightB,lb2,giB,gi2,dif,mid); dumpCnt++; }
+        if(df){ fprintf(df,"%.4f,%.4f,%.4f,%.4f,%.4f,%d\n",lightB,lb2,gi2,gi2,dif,mid); dumpCnt++; }
       }
       int miny=std::max(0,std::min(std::min(y0,y1),y2)), maxy=std::min(H-1,std::max(std::max(y0,y1),y2));
       // 材质→官方贴图 (triplanar 投影)
@@ -717,14 +694,7 @@ int main(int argc, char** argv){
         auto tit2=texCache.find(mbit->second);
         if(tit2!=texCache.end()) terrTex2=&tit2->second;
       }
-      // 无材质绑定 → 官方地形纹理回退 (云=CloudFinTex, 其余=PaintStrokeSh_Terrain)
-      bool texFb=false;
-      if(!terrTex2){
-        const char* fbTex = (mid==80) ? "CloudFinTex" : "PaintStrokeSh_Terrain";
-        auto pit=texCache.find(fbTex);
-        if(pit!=texCache.end() && mid!=48 && mid!=50){ terrTex2=&pit->second; texFb=true; }
-      }
-      const float tscale=0.006f;
+          const float tscale=0.006f;
       for(int y=miny;y<=maxy;y++){
         float xs2[6]; int cnt=0; float zs2[6]; float ws2[18];
         auto inter=[&](int ax2,int ay2,float az2,float awx,float awy,float awz,int bx2,int by2,float bz2,float bwx,float bwy,float bwz){
@@ -756,16 +726,7 @@ int main(int argc, char** argv){
               else if(fabs(nx)>=fabs(nz)){ uu=wwy*tscale; vv=wwz*tscale; }
               else { uu=wwx*tscale; vv=wwy*tscale; }
               uint8_t qr,qg,qb; sampleTex(*terrTex2,uu,vv,qr,qg,qb);
-              if(texFb){
-                // 官方地形纹理作细节: 云 60/40, 其余 82/18
-                float wMix = (mid==80) ? 0.60f : 0.82f;
-                fr=(int)(((hc>>16)&255)*wMix+qr*(1.0f-wMix));
-                fg=(int)(((hc>>8)&255)*wMix+qg*(1.0f-wMix));
-                fbt=(int)((hc&255)*wMix+qb*(1.0f-wMix));
-              } else {
-                fr=(int)(((hc>>16)&255)*qr/255); fg=(int)(((hc>>8)&255)*qg/255); fbt=(int)((hc&255)*qb/255);
-              }
-              fr=fr*sh/255; fg=fg*sh/255; fbt=fbt*sh/255;
+              fr=(int)(tr*qr/255); fg=(int)(tg*qg/255); fbt=(int)(tb*qb/255);
             }
             float fog=(zd-fogN)/(fogF-fogN); if(fog<0)fog=0; if(fog>1)fog=1; if(bakevis) fog=0;
             if(mid==80) fog*=0.45f; // 云材质: 雾影响减半, 保持云白亮层次

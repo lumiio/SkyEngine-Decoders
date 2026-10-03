@@ -73,18 +73,22 @@ bool decode_bst_baked(const std::vector<uint8_t>& buf, MeshData& out){
     out.pos.resize(out.vertexCount);
     out.vmat.resize(out.vertexCount);
     out.uv0.resize(out.vertexCount*2);
-    out.uv1.resize(out.vertexCount*2);
-    out.uv2.resize(out.vertexCount*2);
+    out.uv1.resize(out.vertexCount*4); // in3 RGBA8 = official vertex color 1
+    out.uv2.resize(out.vertexCount*4); // in4 RGBA8 = official vertex color 2
     for(uint32_t i=0;i<out.vertexCount;i++){
       const uint8_t* v=decoded.data()+i*36;
       memcpy(&out.pos[i],v,12); // f32 xyz
  out.vmat[i]=v[16];// material[0] = material ID
-    out.uv0[i*2] =(float)(v[24])/255.f;// in2 first byte = baked light
+    out.uv0[i*2] =(float)(v[24])/255.f;// in2.r = baked light (official RGBA8 grayscale)
       out.uv0[i*2+1]= (float)(v[25])/255.f;
-      out.uv1[i*2]  = (float)((v[28]|(v[29]<<8)))/65535.f;
-      out.uv1[i*2+1]= (float)((v[30]|(v[31]<<8)))/65535.f;
-      out.uv2[i*2]  = (float)((v[32]|(v[33]<<8)))/65535.f;
-      out.uv2[i*2+1]= (float)((v[34]|(v[35]<<8)))/65535.f;
+      out.uv1[i*4]  = (float)(v[28])/255.f;
+      out.uv1[i*4+1]= (float)(v[29])/255.f;
+      out.uv1[i*4+2]= (float)(v[30])/255.f;
+      out.uv1[i*4+3]= (float)(v[31])/255.f;
+      out.uv2[i*4]  = (float)(v[32])/255.f;
+      out.uv2[i*4+1]= (float)(v[33])/255.f;
+      out.uv2[i*4+2]= (float)(v[34])/255.f;
+      out.uv2[i*4+3]= (float)(v[35])/255.f;
     }
     p+=cs;
   }

@@ -10,7 +10,7 @@ Contains only self-written decoding / rendering code. No Thatgamecompany (TGC) a
 
 | File | Format | Notes |
 |---|---|---|
-| `sky_bst_decoder.h` | `BstBaked.meshes` | LVL0 / GEO0 / LOD0 / METR sections; GEO0 vertex material id + baked-light UV |
+| `sky_bst_decoder.h` | `BstBaked.meshes` | LVL0 / GEO0 / LOD0 / METR sections; GEO0 vertex material id + in2/in3/in4 (baked light + official vertex colors) |
 | `sky_mesh_loader.{h,cpp}` | `.mesh` | 0x4e payload, LZ4, vertex/index streams, compressed variants (`_CompOcc` / `_ZipPos` / `_ZipUvs` / `_StripAnim`), bones |
 | `sky_animpack_decoder.h` | `.animpack` | skeleton hierarchy, animation tracks, creature tracks |
 | `sky_animpack_loader.{h,cpp}` | `.animpack` | package parsing + track instantiation |
@@ -60,9 +60,10 @@ Contains only self-written decoding / rendering code. No Thatgamecompany (TGC) a
 - Skinning: `final = Σ w·world[b]·inv(bind[b])·pos`
 
 ### `BstBaked.meshes`
-- Sections: LVL0 (indices) → GEO0 (vertices / materials / baked UV) → LOD0 (quantized vertices) → METR (AABB + material table)
-- GEO0 vertex material id (`vmat`) → LevelMaterial color table; baked light `lightB = uv0.u`, `giB = uv1.u`
-- Light: `shF = 0.15 + 0.85·lightB (+ 0.06·giB)`
+- Sections: LVL0 (indices) → GEO0 (vertices / materials / baked data) → LOD0 (quantized vertices) → METR (AABB + material table)
+- GEO0 vertex stream (stride 36): `pos (f32×3)` + `normal (R8G8B8A8_SNORM)` + `material[4]+weights[4] (u8×8)` + `in2 / in3 / in4 (R8G8B8A8_UNORM)`
+- `in2` = baked light (grayscale); `in3` / `in4` = official per-vertex colors (Grass `in3≈(121,159,121)`, Cliff `in3≈(66,87,120)`)
+- Light: `shF = 0.15 + 0.85·in2.r`
 
 ### `Objects.level.bin`
 - Instances: 16-elem row-major matrix + texture ref + color + self-lit + cloud flag
